@@ -66,6 +66,9 @@ def parse_appworld_dataset(folder_path: str | Path) -> list[dict]:
 
     return dataset
 
+
+
+# Sanity-check / SMOKE TEST  (I CAN RUN IT WITH:  python parse_appworld.py)
 def _smoke_test_single(file_path: str | Path) -> None:
     print("=== Single-trace smoke test ===")
     messages = parse_appworld_trace(file_path)
