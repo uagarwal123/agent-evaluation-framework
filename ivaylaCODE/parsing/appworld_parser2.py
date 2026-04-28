@@ -1,20 +1,10 @@
-"""
-AppWorld trace parser.
-
-Output scheme:
-    dataset: list of
-        {
-            "trace_id":        str,
-            "messages":        list of {"agent": str, "content": str},
-            "MAST_annotations": dict   # empty placeholder, filled later
-        }
-"""
-
 from pathlib import Path
+import json
 
 # Single-trace parser
 def parse_appworld_trace(file_path: str | Path) -> list[dict]:
     lines = Path(file_path).read_text(encoding="utf-8").splitlines()
+
     messages: list[dict] = []
     current_agent: str | None = None
     current_lines: list[str] = []
@@ -43,6 +33,15 @@ def parse_appworld_trace(file_path: str | Path) -> list[dict]:
         elif line.startswith("Code Execution Output"):
             continue
 
+        elif line.startswith("{") or line.startswith("["):
+            continue
+
+        elif line.startswith("}") or line.startswith("]"):
+            continue
+
+        elif "print(" in line or "api_docs" in line:
+            continue
+
         elif line == "":
             continue
 
@@ -66,9 +65,6 @@ def parse_appworld_dataset(folder_path: str | Path) -> list[dict]:
         })
 
     return dataset
-
-
-# Sanity-check / SMOKE TEST  (I CAN RUN IT WITH:  python parse_appworld.py)
 
 def _smoke_test_single(file_path: str | Path) -> None:
     print("=== Single-trace smoke test ===")
