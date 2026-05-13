@@ -23,8 +23,6 @@ COMPLETE_TASK_ANSWER_PATTERN = re.compile(r'complete_task\([^)]*?answer=(?:["\']
 API_CALL_PATTERN = re.compile(r'\bsend_message\(|\bapis\.\w|\bprint\(apis\.')
 CALL_EXTENSION_PATTERN = re.compile(r'^\s*#\s*CallExtension\b')
 
-URL_PATTERN = re.compile(r"https?://[^\s\)\"'<>\\]+")
-
 _HEADERS = [
     (re.compile(r"^Response from Supervisor Agent\s*$"),            "supervisor_response",  4),
     (re.compile(r"^Code Execution Output\s*$"),                     "code_exec",            4),
@@ -148,7 +146,6 @@ def parse_file(path: Path) -> Trace:
             metadata={
                 "step_index": len(steps),
                 "is_final_answer": final_match is not None,
-                "urls": list(dict.fromkeys(URL_PATTERN.findall(content))),
             },
         )
         steps.append(step)
@@ -169,7 +166,7 @@ def parse_file(path: Path) -> Trace:
                 agent="User",
                 content=task,
                 kind="message",
-                metadata={"step_index": 0, "is_final_answer": False, "final_status": None, "urls": []},
+                metadata={"step_index": 0, "is_final_answer": False},
             ))
             continue
 
@@ -221,8 +218,6 @@ def parse_file(path: Path) -> Trace:
             "final_status": final_status,
             "final_answer": final_answer,
             "success": evaluation.get("success"),
-            "difficulty": evaluation.get("difficulty"),
-            "num_tests": evaluation.get("num_tests"),
             "passes": evaluation.get("passes", []),
             "failures": evaluation.get("failures", []),
             "n_turns": len(steps),

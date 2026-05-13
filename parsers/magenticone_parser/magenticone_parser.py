@@ -208,14 +208,12 @@ def parse_trajectory_text(console_log: str, record: dict) -> Trace | None:
             "mast_annotation": record["mast_annotation"],
             "task": task,
             "final_answer": final_answer,
-            "success": None,
             "runtime_seconds": runtime_seconds,
             "planning_events": planning_events,
             "n_turns": len(steps),
             "n_agent_switches": n_switches,
             "n_replans": max(0, len(planning_events) - 1),
             "agent_participation": agent_participation,
-            "task_requires_file": bool(FILE_ATTACHMENT_PATTERN.search(task or "")),
         },
     )
 

@@ -26,11 +26,6 @@ _SEPARATOR = re.compile(
 )
 _AGENT_BODY = re.compile(r"^\s*(\w+): \n?(.*)", re.DOTALL)
 _CONTENT_FIELD = re.compile(r"\nCONTENT:\n(.*)", re.DOTALL)
-_CODE_BLOCK = re.compile(r"```")
-_PYTHON_CODE = re.compile(r"^(?:import |from |def |class |@)", re.MULTILINE)
-_URL = re.compile(r"https?://\S+")
-
-_CODE_AGENTS = frozenset(["SimpleCoder", "SimpleTester"])
 
 
 def _strip_separator(body: str) -> str:
@@ -38,10 +33,6 @@ def _strip_separator(body: str) -> str:
 
 
 def _classify_kind(agent: str, content: str) -> str:
-    if agent == "Human":
-        return "system"
-    if agent in _CODE_AGENTS or _CODE_BLOCK.search(content):
-        return "tool_call"
     return "message"
 
 
@@ -66,13 +57,8 @@ def parse_trajectory(trajectory: str, trace_id: str = "") -> Trace:
             step = Step(
                 agent="Human",
                 content=content,
-                kind="system",
-                metadata={
-                    "step_index": len(steps),
-                    "timestamp": timestamp,
-                    "has_code": False,
-                    "urls": [],
-                },
+                kind="message",
+                metadata={"step_index": len(steps)},
             )
             steps.append(step)
 
@@ -87,12 +73,7 @@ def parse_trajectory(trajectory: str, trace_id: str = "") -> Trace:
                 agent=agent,
                 content=content,
                 kind=kind,
-                metadata={
-                    "step_index": len(steps),
-                    "timestamp": timestamp,
-                    "has_code": bool(_CODE_BLOCK.search(content) or _PYTHON_CODE.search(content)),
-                    "urls": _URL.findall(content),
-                },
+                metadata={"step_index": len(steps)},
             )
             steps.append(step)
 
@@ -111,8 +92,6 @@ def parse_trajectory(trajectory: str, trace_id: str = "") -> Trace:
             "n_turns": len(steps),
             "n_agent_switches": n_agent_switches,
             "agent_participation": agent_participation,
-            "final_answer": None,
-            "success": None,
         },
     )
 

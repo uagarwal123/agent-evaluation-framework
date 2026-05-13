@@ -26,28 +26,23 @@ _SYSTEM_MARKERS = frozenset([
     "[Seminar Conclusion]", "[Update Codes]", "[Software Info]",
 ])
 _TOOL_RESULT_MARKERS = frozenset([
-    "[OpenAI_Usage_Info Receive]", "[Execute Detail]",
+    "[Test Reports]",
 ])
-_CODE_BLOCK = re.compile(r"```\w")
 _FINAL_ANSWER = re.compile(r"^<INFO>\s+\w", re.MULTILINE)
-_URL = re.compile(r"https?://\S+")
-_COST = re.compile(r"cost:\s*\$([0-9.]+)")
 _TASK_PROMPT = re.compile(r"\*\*task_prompt\*\*[:\s|]+([^\n|]+)")
 _PREAMBLE = re.compile(r"^\[ChatDev is a software company.*?\]\n\n", re.DOTALL)
 _DROP_MARKERS = frozenset([
     "[OpenAI_Usage_Info Receive]",
     "[Execute Detail]",
+    "[Seminar Conclusion]",
 ])
 
 
 def _classify_kind(speaker: str, header_rest: str, content: str) -> str:
-    combined = header_rest + " " + content[:200]
-    if speaker == "System" or any(m in header_rest for m in _SYSTEM_MARKERS):
-        return "system"
     if any(m in header_rest for m in _TOOL_RESULT_MARKERS):
         return "tool_result"
-    if _CODE_BLOCK.search(content):
-        return "tool_call"
+    if speaker == "System" or any(m in header_rest for m in _SYSTEM_MARKERS):
+        return "system"
     return "message"
 
 
@@ -64,7 +59,6 @@ def parse_log_text(text: str, trace_id: str = "") -> Trace:
 
     steps: list[Step] = []
     task: str = ""
-    total_cost: float = 0.0
     phases_seen: list[str] = []
     phases_order: list[str] = []
 
@@ -83,8 +77,6 @@ def parse_log_text(text: str, trace_id: str = "") -> Trace:
 
         if any(m in header_text for m in _DROP_MARKERS):
             continue
-        if "[Seminar Conclusion]" in header_text:
-            continue
         if body.startswith("execute SimplePhase:") or body.startswith("execute ComposedPhase:"):
             continue
 
@@ -95,10 +87,17 @@ def parse_log_text(text: str, trace_id: str = "") -> Trace:
             m = _TASK_PROMPT.search(content)
             if m:
                 task = m.group(1).strip()
-
-        cost_m = _COST.search(content)
-        if cost_m:
-            total_cost += float(cost_m.group(1))
+                steps.append(Step(
+                    agent="Human",
+                    content=task,
+                    kind="message",
+                    metadata={
+                        "step_index": len(steps),
+                        "phase_name": "",
+                        "turn_number": None,
+                        "agent_pair": "",
+                    },
+                ))
 
         turn_m = _TURN_HEADER.search(header_text)
         phase_name = turn_m.group(3).strip() if turn_m else ""
@@ -109,26 +108,30 @@ def parse_log_text(text: str, trace_id: str = "") -> Trace:
             phases_seen.append(phase_name)
             phases_order.append(phase_name)
 
-        urls = _URL.findall(content)
-
         step = Step(
             agent=speaker,
             content=content,
             kind=kind,
             metadata={
                 "step_index": len(steps),
-                "timestamp": timestamp,
                 "phase_name": phase_name,
                 "turn_number": turn_number,
                 "agent_pair": agent_pair,
-                "has_code": kind != "system" and bool(_CODE_BLOCK.search(content)),
-                "is_final_answer": bool(_FINAL_ANSWER.search(content)),
-                "urls": list(dict.fromkeys(urls)),
             },
         )
         steps.append(step)
 
-    conversation_steps = [s for s in steps if s.kind in ("message", "tool_call")]
+    final_answer: str = "not finished"
+    for s in reversed(steps):
+        m = _FINAL_ANSWER.search(s.content)
+        if m:
+            line = s.content[m.start():].splitlines()[0]
+            last_info = line[len("<INFO>"):].strip()
+            if last_info.lower().startswith("finished"):
+                final_answer = "Finished"
+            break
+
+    conversation_steps = [s for s in steps if s.kind == "message"]
     agent_participation: Counter = Counter(s.agent for s in conversation_steps)
     n_agent_switches = sum(
         1 for a, b in zip(conversation_steps, conversation_steps[1:])
@@ -144,9 +147,7 @@ def parse_log_text(text: str, trace_id: str = "") -> Trace:
             "n_turns": len(steps),
             "n_agent_switches": n_agent_switches,
             "agent_participation": agent_participation,
-            "total_cost_usd": round(total_cost, 6),
-            "final_answer": None,
-            "success": None,
+            "final_answer": final_answer,
         },
     )
 
