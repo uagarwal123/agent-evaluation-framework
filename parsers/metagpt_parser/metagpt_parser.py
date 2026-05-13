@@ -26,9 +26,6 @@ _SEPARATOR = re.compile(
 )
 _AGENT_BODY = re.compile(r"^\s*(\w+): \n?(.*)", re.DOTALL)
 _CONTENT_FIELD = re.compile(r"\nCONTENT:\n(.*)", re.DOTALL)
-_CODE_BLOCK = re.compile(r"```")
-_PYTHON_CODE = re.compile(r"^(?:import |from |def |class |@)", re.MULTILINE)
-_URL = re.compile(r"https?://\S+")
 
 
 def _strip_separator(body: str) -> str:
@@ -61,12 +58,7 @@ def parse_trajectory(trajectory: str, trace_id: str = "") -> Trace:
                 agent="Human",
                 content=content,
                 kind="message",
-                metadata={
-                    "step_index": len(steps),
-                    "timestamp": timestamp,
-                    "has_code": False,
-                    "urls": [],
-                },
+                metadata={"step_index": len(steps)},
             )
             steps.append(step)
 
@@ -81,12 +73,7 @@ def parse_trajectory(trajectory: str, trace_id: str = "") -> Trace:
                 agent=agent,
                 content=content,
                 kind=kind,
-                metadata={
-                    "step_index": len(steps),
-                    "timestamp": timestamp,
-                    "has_code": bool(_CODE_BLOCK.search(content) or _PYTHON_CODE.search(content)),
-                    "urls": _URL.findall(content),
-                },
+                metadata={"step_index": len(steps)},
             )
             steps.append(step)
 
@@ -105,8 +92,6 @@ def parse_trajectory(trajectory: str, trace_id: str = "") -> Trace:
             "n_turns": len(steps),
             "n_agent_switches": n_agent_switches,
             "agent_participation": agent_participation,
-            "final_answer": None,
-            "success": None,
         },
     )
 

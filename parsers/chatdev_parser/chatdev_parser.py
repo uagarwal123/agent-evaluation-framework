@@ -29,8 +29,6 @@ _TOOL_RESULT_MARKERS = frozenset([
     "[Test Reports]",
 ])
 _FINAL_ANSWER = re.compile(r"^<INFO>\s+\w", re.MULTILINE)
-_URL = re.compile(r"https?://\S+")
-_COST = re.compile(r"cost:\s*\$([0-9.]+)")
 _TASK_PROMPT = re.compile(r"\*\*task_prompt\*\*[:\s|]+([^\n|]+)")
 _PREAMBLE = re.compile(r"^\[ChatDev is a software company.*?\]\n\n", re.DOTALL)
 _DROP_MARKERS = frozenset([
@@ -61,7 +59,6 @@ def parse_log_text(text: str, trace_id: str = "") -> Trace:
 
     steps: list[Step] = []
     task: str = ""
-    total_cost: float = 0.0
     phases_seen: list[str] = []
     phases_order: list[str] = []
 
@@ -96,19 +93,11 @@ def parse_log_text(text: str, trace_id: str = "") -> Trace:
                     kind="message",
                     metadata={
                         "step_index": len(steps),
-                        "timestamp": timestamp,
                         "phase_name": "",
                         "turn_number": None,
                         "agent_pair": "",
-                        "has_code": False,
-                        "is_final_answer": False,
-                        "urls": [],
                     },
                 ))
-
-        cost_m = _COST.search(content)
-        if cost_m:
-            total_cost += float(cost_m.group(1))
 
         turn_m = _TURN_HEADER.search(header_text)
         phase_name = turn_m.group(3).strip() if turn_m else ""
@@ -119,24 +108,28 @@ def parse_log_text(text: str, trace_id: str = "") -> Trace:
             phases_seen.append(phase_name)
             phases_order.append(phase_name)
 
-        urls = _URL.findall(content)
-
         step = Step(
             agent=speaker,
             content=content,
             kind=kind,
             metadata={
                 "step_index": len(steps),
-                "timestamp": timestamp,
                 "phase_name": phase_name,
                 "turn_number": turn_number,
                 "agent_pair": agent_pair,
-                "has_code": kind == "message" and "```" in content,
-                "is_final_answer": bool(_FINAL_ANSWER.search(content)),
-                "urls": list(dict.fromkeys(urls)),
             },
         )
         steps.append(step)
+
+    final_answer: str = "not finished"
+    for s in reversed(steps):
+        m = _FINAL_ANSWER.search(s.content)
+        if m:
+            line = s.content[m.start():].splitlines()[0]
+            last_info = line[len("<INFO>"):].strip()
+            if last_info.lower().startswith("finished"):
+                final_answer = "Finished"
+            break
 
     conversation_steps = [s for s in steps if s.kind == "message"]
     agent_participation: Counter = Counter(s.agent for s in conversation_steps)
@@ -154,9 +147,7 @@ def parse_log_text(text: str, trace_id: str = "") -> Trace:
             "n_turns": len(steps),
             "n_agent_switches": n_agent_switches,
             "agent_participation": agent_participation,
-            "total_cost_usd": round(total_cost, 6),
-            "final_answer": None,
-            "success": None,
+            "final_answer": final_answer,
         },
     )
 

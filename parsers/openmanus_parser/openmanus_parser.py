@@ -2,7 +2,6 @@
 import json
 import re
 import sys
-from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -28,7 +27,7 @@ _TOOL_RESULT_RE = re.compile(
 _PLAN_CREATION_RESULT_RE = re.compile(r"Plan creation result: (.+)")
 _TASK_RE = re.compile(r"Read prompt from task\.txt: (.+)")
 _TIMEOUT_RE = re.compile(r"Request processing timed out")
-_PLAN_COMPLETED_RE = re.compile(r"Plan completed:\n([\s\S]+)")
+_THOUGHT_PREFIX_RE = re.compile(r"^\s*\S+\s*Manus's thoughts:\s*", re.UNICODE)
 
 
 def _split_log_entries(text: str) -> list[tuple[str, str, str, str]]:
@@ -143,7 +142,7 @@ def _parse_turn(turn_entries: list[tuple], turn_index: int) -> list[Step]:
             agent="Manus",
             content=f"{tool_name}\n{args_str}",
             kind="tool_call",
-            metadata={"step_n": turn_index, "tool_name": tool_name, "tool_args": args_str, "all_tools": tool_names},
+            metadata={"step_n": turn_index, "tool_name": tool_name, "tool_args": args_str},
         ))
 
     if tool_result_content is not None:
@@ -159,16 +158,11 @@ def _parse_turn(turn_entries: list[tuple], turn_index: int) -> list[Step]:
 
 def _extract_termination(entries_flat: list[tuple]) -> dict:
     timed_out = False
-    plan_completed_text = None
     for ts, level, source, content in entries_flat:
         if source in ("__main__:run_flow:45", "__main__:run_flow:46"):
             if _TIMEOUT_RE.search(content):
                 timed_out = True
-        if "Plan completed:" in content:
-            m = _PLAN_COMPLETED_RE.search(content)
-            if m:
-                plan_completed_text = m.group(1).strip()
-    return {"timed_out": timed_out, "plan_completed_text": plan_completed_text}
+    return {"timed_out": timed_out}
 
 
 def _parse_trajectory(trajectory_str: str, record: dict) -> Trace | None:
@@ -202,8 +196,36 @@ def _parse_trajectory(trajectory_str: str, record: dict) -> Trace | None:
             metadata={},
         ))
 
+    turn_start_idxs = [
+        i for i, (ts, level, source, content) in enumerate(entries)
+        if source == "app.agent.base:run:140" and _EXECUTING_STEP_RE.search(content)
+    ]
+
+    sys_events: list[tuple[int, str, str]] = []
+    for i, (ts, level, source, content) in enumerate(entries):
+        if source == "app.flow.planning:_mark_step_completed:301":
+            sys_events.append((i, "plan_step_completed", content.strip()))
+        elif source == "app.flow.planning:_execute_step:285" and level == "ERROR":
+            sys_events.append((i, "plan_step_error", content.strip()))
+
+    sys_cursor = 0
+
+    def _emit_events_before(boundary: int) -> None:
+        nonlocal sys_cursor
+        while sys_cursor < len(sys_events) and sys_events[sys_cursor][0] < boundary:
+            _, event_type, ev_content = sys_events[sys_cursor]
+            steps.append(Step(
+                agent="system",
+                content=ev_content,
+                kind="system",
+                metadata={"event_type": event_type},
+            ))
+            sys_cursor += 1
+
     for i, turn in enumerate(turns):
+        _emit_events_before(turn_start_idxs[i])
         steps.extend(_parse_turn(turn, i))
+    _emit_events_before(len(entries))
 
     for i, step in enumerate(steps):
         step.metadata["step_index"] = i
@@ -211,10 +233,13 @@ def _parse_trajectory(trajectory_str: str, record: dict) -> Trace | None:
     if not steps:
         return None
 
-    agent_participation = dict(Counter(s.agent for s in steps))
-    n_agent_switches = sum(
-        1 for i in range(1, len(steps)) if steps[i].agent != steps[i - 1].agent
-    )
+    final_answer: str | None = None
+    for s in reversed(steps):
+        if s.agent == "Manus" and s.kind == "message":
+            body = _THOUGHT_PREFIX_RE.sub("", s.content).strip()
+            if body:
+                final_answer = body
+                break
 
     trace_meta = {
         "trace_id": record.get("trace_id"),
@@ -225,12 +250,9 @@ def _parse_trajectory(trajectory_str: str, record: dict) -> Trace | None:
         "mast_annotation": record.get("mast_annotation"),
         "n_turns": len(steps),
         "n_agent_turns": len(turns),
-        "agent_participation": agent_participation,
-        "n_agent_switches": n_agent_switches,
         "task": task_prompt,
         "timed_out": term["timed_out"],
-        "final_answer": term["plan_completed_text"],
-        "success": None,
+        "final_answer": final_answer,
     }
 
     return Trace(steps=steps, metadata=trace_meta)

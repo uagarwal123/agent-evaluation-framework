@@ -116,7 +116,7 @@ def _build_trace(record: dict, entries: list[tuple[str, str, str]], metadata: di
             agent="Human",
             content=metadata["problem_statement"],
             kind="message",
-            metadata={"step_index": 0, "has_action": False, "is_final_answer": False},
+            metadata={"step_index": 0, "is_final_answer": False},
         ))
     offset = len(steps)
     for i, (label_prefix, agent, content) in enumerate(entries):
@@ -128,7 +128,6 @@ def _build_trace(record: dict, entries: list[tuple[str, str, str]], metadata: di
             kind=kind,
             metadata={
                 "step_index": i + offset,
-                "has_action": bool(ACTION_TOOL_PATTERN.search(content)),
                 "is_final_answer": final_answer is not None,
             },
         )
@@ -154,10 +153,8 @@ def _build_trace(record: dict, entries: list[tuple[str, str, str]], metadata: di
         "n_turns": len(steps),
         "agent_participation": agent_participation,
         "n_agent_switches": n_agent_switches,
-        "instance_id": metadata.get("instance_id"),
         "task": metadata.get("problem_statement"),
         "final_answer": final_answer,
-        "success": None,
     }
     return Trace(steps=steps, metadata=trace_meta)
 
