@@ -1,0 +1,13 @@
+model: claude-sonnet-4-6
+backend: genai
+temperature: 0.0
+system_prompt:  
+reasoning: false
+shots: 0            # 0 = no examples, 1 = examples
+slice_n: null        # null = all traces, number = sample                                                                    
+definitions_path: ../../data/prompts/definitions.txt
+examples_path: ../../data/prompts/examples.txt
+dataset_path: ../../data/MAST-Data/MAD_human_labelled_dataset.json
+genai_project: ingka-map-services-dev
+genai_location: europe-west1
+ollama_host: http://localhost:11434

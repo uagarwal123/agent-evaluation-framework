@@ -8,15 +8,18 @@ Pydantic object when a schema is supplied.
 
 import time
 import datetime
-import os
+from pathlib import Path
 import re
 import yaml
+import json
+import random
 from dataclasses import dataclass, field
 from google import genai
 from google.genai import types as genai_types
 import google.auth.impersonated_credentials
 import google.auth.transport.requests
 from google.cloud import secretmanager
+from anthropic import AnthropicVertex
 import ollama
 
 # Model prices per 1M tokens: (price_in, price_out)
@@ -39,9 +42,11 @@ class JudgeConfig:
     backend: str = "genai"   # "genai" | "ollama"
     temperature: float = 0.0
     reasoning: bool = False
+    shots: int = 0
+    slice_n: int | None = None
     system_prompt: str = ""
-    definitions_path: str = "taxonomy_definitions_examples/definitions.txt"
-    examples_path: str  = "taxonomy_definitions_examples/examples.txt"
+    definitions_path: str = "../../data/prompts/definitions.txt"
+    examples_path: str  = "../../data/prompts/examples.txt"
     dataset_path: str   = ""
     genai_project: str  = "ingka-map-services-dev"
     genai_location: str = "europe-west1"
@@ -255,6 +260,39 @@ def _call_genai(model: str, prompt: str, temperature: float, trace_id: str, proj
         latency_s=latency
     )
 
+def _call_anthropic_vertex(model: str, prompt: str, temperature: float, trace_id: str, project: str, location: str, system_prompt: str = "", max_tokens: int = 4096) -> JudgeResponse:
+    """Call a Claude model hosted on Vertex AI Model Garden."""
+
+    client = AnthropicVertex(
+        region=location,
+        project_id=project,
+        credentials=_get_gcp_credentials(project),
+    )
+
+    kwargs = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    if system_prompt:
+        kwargs["system"] = system_prompt
+
+    t0 = time.perf_counter()
+    response = client.messages.create(**kwargs)
+    latency = time.perf_counter() - t0
+
+    raw = response.content[0].text if response.content else ""
+    return JudgeResponse(
+        trace_id=trace_id,
+        raw_text=raw,
+        model_id=model,
+        tokens_in=response.usage.input_tokens or 0,
+        tokens_out=response.usage.output_tokens or 0,
+        latency_s=latency,
+    )
+
+
 def _call_ollama(model: str, prompt: str, temperature: float, trace_id: str, host: str, system_prompt="") -> JudgeResponse:
     """Call a local Ollama model."""
 
@@ -354,14 +392,24 @@ def parse_14_modes(response: str):
     return result
 
 
+def load_dataset(config: JudgeConfig) -> list[dict]:
+    with open(config.dataset_path) as f:
+        data = json.load(f)
+    if config.slice_n is not None and config.slice_n < len(data):
+        data = random.Random(42).sample(data, config.slice_n)
+    return data
+
+_MODULE_DIR = Path(__file__).parent
+
 class LLMJudge:
       def __init__(self, config: JudgeConfig):
           self.config = config
-          self.definitions = open(config.definitions_path).read()
-          self.examples = open(config.examples_path).read() if config.examples_path else ""
+          self.definitions = (_MODULE_DIR / config.definitions_path).read_text()
+          self.examples = (_MODULE_DIR / config.examples_path).read_text() if config.examples_path else ""
 
       def judge_trace(self, trace_id: str, trace_text: str) -> JudgeResponse:
-          prompt = build_judge_prompt(trace_text, self.definitions, self.examples)
+          examples = self.examples if self.config.shots > 0 else ""
+          prompt = build_judge_prompt(trace_text, self.definitions, examples)
           response = self._dispatch(prompt, trace_id)
           response.annotations = parse_14_modes(response.raw_text)
           return response
@@ -369,6 +417,8 @@ class LLMJudge:
       def _dispatch(self, prompt, trace_id) -> JudgeResponse:
           if self.config.backend == "ollama":                                                                                              
             return _call_ollama(self.config.model, prompt, self.config.temperature, trace_id, self.config.ollama_host, self.config.system_prompt)                   
-          else:                                                                                                                            
-            return _call_genai(self.config.model, prompt, self.config.temperature, trace_id,
-                     self.config.genai_project, self.config.genai_location, self.config.system_prompt, self.config.reasoning)
+          if self.config.model.startswith("claude"):
+            return _call_anthropic_vertex(self.config.model, prompt, self.config.temperature, trace_id,
+                     self.config.genai_project, self.config.genai_location, self.config.system_prompt)
+          return _call_genai(self.config.model, prompt, self.config.temperature, trace_id,
+                   self.config.genai_project, self.config.genai_location, self.config.system_prompt, self.config.reasoning)
