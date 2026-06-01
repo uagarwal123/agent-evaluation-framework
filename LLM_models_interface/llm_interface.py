@@ -1,9 +1,8 @@
 """
-Uniform LLM interface.
+LLM interface for the MAST failure-mode judge.
 
-All providers are called through a single `judge()` function that returns a
-`JudgeResponse` with token counts, latency, cost, and optionally a parsed
-Pydantic object when a schema is supplied.
+Wraps Anthropic (via Vertex AI), Gemini (via Vertex AI), and Ollama behind a single call: 
+llm_interface.judge(trace, config) -> JudgeResponse.
 """
 
 import time
@@ -54,9 +53,16 @@ class JudgeConfig:
     ollama_host: str    = "http://localhost:11434"
 
 def load_config(path: str) -> JudgeConfig:
-    with open(path) as f:
+    config_path = Path(path).resolve()
+    config_dir = config_path.parent
+    with open(config_path) as f:
         data = yaml.safe_load(f)
-    return JudgeConfig(**data)
+    cfg = JudgeConfig(**data)
+    for field in ("definitions_path", "examples_path", "dataset_path"):
+        val = getattr(cfg, field)
+        if val and not Path(val).is_absolute():
+            setattr(cfg, field, str(config_dir / val))
+    return cfg
 
 
 @dataclass
@@ -440,8 +446,8 @@ _MODULE_DIR = Path(__file__).parent
 class LLMJudge:
     def __init__(self, config: JudgeConfig):
         self.config = config
-        self.definitions = (_MODULE_DIR / config.definitions_path).read_text()
-        self.examples = (_MODULE_DIR / config.examples_path).read_text() if config.examples_path else ""
+        self.definitions = Path(config.definitions_path).read_text()
+        self.examples = Path(config.examples_path).read_text() if config.examples_path else ""
 
     def judge_trace(self, trace_id: str, trace_text: str) -> JudgeResponse:
         examples = self.examples if self.config.shots > 0 else ""
