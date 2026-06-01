@@ -9,6 +9,7 @@ Pydantic object when a schema is supplied.
 import time
 import datetime
 from pathlib import Path
+from collections import defaultdict
 import re
 import yaml
 import json
@@ -392,11 +393,42 @@ def parse_14_modes(response: str):
     return result
 
 
+def _stratified_sample(data: list[dict], n: int, key: str, seed: int = 42) -> list[dict]:
+    """Sample n items proportionally per mas_name, with a fixed seed."""
+
+    rng = random.Random(seed)
+    by_mas_name: dict[str, list] = defaultdict(list)
+    for item in data:
+        by_mas_name[item[key]].append(item)
+
+    total = len(data)
+    result: list[dict] = []
+    remainder: list[tuple[float, str]] = []
+
+    for mas_name, items in by_mas_name.items():
+        exact = n * len(items) / total
+        quota = int(exact)
+        result.extend(rng.sample(items, min(quota, len(items))))
+        remainder.append((exact - quota, mas_name))
+
+    leftover = n - len(result)
+    sampled_ids = {id(x) for x in result}
+    for _, mas_name in sorted(remainder, reverse=True)[:leftover]:
+        pool = [x for x in by_mas_name[mas_name] if id(x) not in sampled_ids]
+        if pool:
+            chosen = rng.choice(pool)
+            result.append(chosen)
+            sampled_ids.add(id(chosen))
+
+    rng.shuffle(result)
+    return result
+
+
 def load_dataset(config: JudgeConfig) -> list[dict]:
     with open(config.dataset_path) as f:
         data = json.load(f)
     if config.slice_n is not None and config.slice_n < len(data):
-        data = random.Random(42).sample(data, config.slice_n)
+        data = _stratified_sample(data, config.slice_n, key="mas_name", seed=42)
     return data
 
 _MODULE_DIR = Path(__file__).parent
