@@ -104,3 +104,9 @@ websockets==16.0
 wrapt==2.2.0
 xxhash==3.7.0
 zstandard==0.25.0
+matplotlib
+numpy
+pandas
+seaborn
+tiktoken
+huggingface_hub
