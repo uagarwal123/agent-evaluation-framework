@@ -38,7 +38,8 @@ FAILURE_MODES = ["1.1","1.2","1.3","1.4","1.5","2.1","2.2","2.3","2.4","2.5","2.
 
 @dataclass
 class JudgeConfig:
-    model: str
+    name: str = ""
+    model: str = ""
     backend: str = "genai"   # "genai" | "anthropic" | "ollama"
     temperature: float = 0.0
     reasoning: bool = False
@@ -52,18 +53,20 @@ class JudgeConfig:
     genai_location: str = "europe-west1"
     ollama_host: str    = "http://localhost:11434"
 
-def load_config(path: str) -> JudgeConfig:
-    config_path = Path(path).resolve()
-    config_dir = config_path.parent
-    with open(config_path) as f:
-        data = yaml.safe_load(f)
-    cfg = JudgeConfig(**data)
-    for field in ("definitions_path", "examples_path", "dataset_path"):
-        val = getattr(cfg, field)
-        if val and not Path(val).is_absolute():
-            setattr(cfg, field, str(config_dir / val))
-    return cfg
-
+def load_configs(path: str) -> list[JudgeConfig]:                                                                                                        
+      config_path = Path(path).resolve()                                                                                                                   
+      config_dir = config_path.parent                                                                                                                      
+      with open(config_path) as f:                                                                                                                         
+          data = yaml.safe_load(f)                                                                 
+      configs = []
+      for item in data["experiments"]:
+          cfg = JudgeConfig(**item)
+          for field in ("definitions_path", "examples_path", "dataset_path"):
+              val = getattr(cfg, field)
+              if val and not Path(val).is_absolute():
+                  setattr(cfg, field, str(config_dir / val))
+          configs.append(cfg)
+      return configs
 
 @dataclass
 class JudgeResponse:
