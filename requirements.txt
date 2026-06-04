@@ -110,3 +110,7 @@ pandas
 seaborn
 tiktoken
 huggingface_hub
+ollama
+openai
+sentence-transformers
+scikit-learn
