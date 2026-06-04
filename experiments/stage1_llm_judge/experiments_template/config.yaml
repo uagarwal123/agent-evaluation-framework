@@ -1,7 +1,7 @@
 experiments:
   - name: claude-sonnet-4-6_few_shot
     model: claude-sonnet-4-6
-    backend: anthropic       # "genai" | "anthropic" | "ollama"
+    backend: anthropic       # "genai" | "anthropic" | "ollama" | "uva"
     temperature: 0.0
     system_prompt:           # optional; leave empty for no system prompt
     reasoning: false         # enables extended thinking (genai + anthropic only; not ollama)
@@ -16,7 +16,7 @@ experiments:
 
   - name: gemini-2.5-flash_zero_shot
     model: gemini-2.5-flash
-    backend: genai           # "genai" | "anthropic" | "ollama"
+    backend: genai           # "genai" | "anthropic" | "ollama" | "uva"
     temperature: 0.0
     system_prompt:           # optional; leave empty for no system prompt
     reasoning: false         # enables extended thinking (genai + anthropic only; not ollama)

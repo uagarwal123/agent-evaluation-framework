@@ -24,6 +24,17 @@ pip install -r requirements.txt
 | `anthropic` | `gcloud auth application-default login`  Claude is served via Vertex AI |
 | `genai` | `gcloud auth application-default login`  Gemini via Vertex AI |
 | `ollama` | Ollama running at `http://localhost:11434` |
+| `uva` | `UVA_API_KEY` environment variable set |
+
+```powershell
+# Windows (PowerShell)
+$env:UVA_API_KEY = "sk-..."
+```
+
+```bash
+# Mac/Linux
+export UVA_API_KEY="sk-..."
+```
 
 
 ## Data understanding
