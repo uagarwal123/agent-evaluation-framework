@@ -5,8 +5,15 @@ This is the repo for our bachelor thesis project (UvA × IKEA). We are researchi
 ## Setup
 
 ```bash
-git clone <repo>
-python -m venv .venv && source .venv/bin/activate 
+git clone https://github.com/uagarwal123/agent-evaluation-framework.git
+cd agent-evaluation-framework
+python -m venv .venv
+
+# Mac/Linux
+source .venv/bin/activate
+# Windows
+.venv\Scripts\activate
+
 pip install -r requirements.txt
 ```
 
@@ -17,16 +24,26 @@ pip install -r requirements.txt
 | `anthropic` | `gcloud auth application-default login`  Claude is served via Vertex AI |
 | `genai` | `gcloud auth application-default login`  Gemini via Vertex AI |
 | `ollama` | Ollama running at `http://localhost:11434` |
+| `uva` | `UVA_API_KEY` in a `.env` at repo root |
+
+Create a `.env` file at the repo root with:
+
+```
+UVA_API_KEY=sk-...
+```
+
+
+To skip ollama experiments, set `skip_opensource_models: true` in `config.yaml`.
 
 
 ## Data understanding
 
-Three notebooks cover dataset exploration. Read them in this order:
+Three notebooks cover dataset exploration:
 
 | Notebook | What it covers |
 |---|---|
 | `data_understanding/general_eda/eda.ipynb` | Traces per framework, FM prevalence and co-occurrence, token and step-length distributions |
-| `data_understanding/fm_1_3_analysis/fm13_token_length_analysis.ipynb` | FM-1.3 (Step Repetition) deep-dive: does token length predict this failure mode? |
+| `data_understanding/fm_1_3_analysis/fm13_detection_analysis.ipynb` | FM-1.3 (Step Repetition) deep-dive: does token length predict this failure mode? |
 | `data_understanding.ipynb` | Unifies all 7 parser outputs into a shared schema; lets you inspect and export traces for any failure mode to a readable markdown file |
 
 The first two notebooks read directly from `data/MAST-Data/MAD_full_dataset.json`. The third requires the parser output JSON files (see below).
@@ -52,6 +69,8 @@ Output is written as JSON next to each parser (e.g. `parsers/ag2_parser/ag2_outp
 1. Copy `experiments/stage1_llm_judge/experiments_template/` to a new folder, e.g. `experiment_2/`
 2. Edit `config.yaml`  define one or more experiments under the `experiments:` key. Each entry sets `model`, `backend`, `shots`, `slice_n`, etc.
 3. Open `llm_judge_pipeline.ipynb` and run top to bottom
+
+If you don't have Ollama set up, set `skip_opensource_models: true` at the top of the config to skip all Ollama experiments.
 
 The notebook runs all experiments in the config sequentially. Results are written to `saved_results/`:
 

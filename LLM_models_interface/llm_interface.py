@@ -21,6 +21,12 @@ import google.auth.transport.requests
 from google.cloud import secretmanager
 from anthropic import AnthropicVertex
 import ollama
+from openai import OpenAI
+import os
+from dotenv import load_dotenv
+
+# Load .env from repo root so notebooks pick up UVA_API_KEY without restarting.
+load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=False)
 
 # Model prices per 1M tokens: (price_in, price_out)
 PRICES: dict[str, tuple[float, float]] = {
@@ -52,6 +58,7 @@ class JudgeConfig:
     genai_project: str  = "ingka-map-services-dev"
     genai_location: str = "europe-west1"
     ollama_host: str    = "http://localhost:11434"
+    uva_base_url: str   = "https://llmproxy.uva.nl"
 
 def load_configs(path: str) -> list[JudgeConfig]:                                                                                                        
       config_path = Path(path).resolve()                                                                                                                   
@@ -333,6 +340,41 @@ def _call_ollama(model: str, prompt: str, temperature: float, trace_id: str, hos
         latency_s=latency
     )
 
+def _call_uva(model: str, prompt: str, temperature: float, trace_id: str, base_url: str, system_prompt: str = "") -> JudgeResponse:
+    """Call a model via the UvA AI Chat LiteLLM proxy (OpenAI-compatible)."""
+
+    api_key = os.environ["UVA_API_KEY"]
+    client = OpenAI(
+        api_key=api_key,
+        base_url=base_url.rstrip("/") + "/v1",
+        default_query={"api-version": "2024-12-01-preview"},
+        max_retries=6,
+    )
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
+
+    t0 = time.perf_counter()
+    response = client.chat.completions.create(
+        model=model,
+        messages=messages,
+        temperature=temperature,
+    )
+    latency = time.perf_counter() - t0
+
+    raw = response.choices[0].message.content or ""
+    usage = response.usage
+    return JudgeResponse(
+        trace_id=trace_id,
+        raw_text=raw,
+        model_id=model,
+        tokens_in=usage.prompt_tokens if usage else 0,
+        tokens_out=usage.completion_tokens if usage else 0,
+        latency_s=latency,
+    )
+
+
 def parse_14_modes(response: str):
     """
     Parse the LLM responses to extract yes/no answers for each failure mode.
@@ -440,6 +482,9 @@ def _stratified_sample(data: list[dict], n: int, key: str, seed: int = 42) -> li
 def load_dataset(config: JudgeConfig) -> list[dict]:
     with open(config.dataset_path) as f:
         data = json.load(f)
+    # Filter Round 3 before slicing so slice_n=1 stays inside Round 3.
+    if data and "round" in data[0]:
+        data = [t for t in data if t.get("round") == "Round 3"]
     if config.slice_n is not None and config.slice_n < len(data):
         data = _stratified_sample(data, config.slice_n, key="mas_name", seed=42)
     return data
@@ -468,4 +513,7 @@ class LLMJudge:
         if self.config.backend == "genai":
             return _call_genai(self.config.model, prompt, self.config.temperature, trace_id,
                     self.config.genai_project, self.config.genai_location, self.config.system_prompt, self.config.reasoning)
-        raise ValueError(f"Unknown backend: {self.config.backend!r}. Use 'genai', 'anthropic', or 'ollama'.")
+        if self.config.backend == "uva":
+            return _call_uva(self.config.model, prompt, self.config.temperature, trace_id,
+                    self.config.uva_base_url, self.config.system_prompt)
+        raise ValueError(f"Unknown backend: {self.config.backend!r}. Use 'genai', 'anthropic', 'ollama', or 'uva'.")
