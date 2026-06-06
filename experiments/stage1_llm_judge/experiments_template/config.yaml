@@ -1,7 +1,7 @@
 skip_opensource_models: false   # set to true to skip ollama experiments 
 
 experiments:
-  - name: claude-sonnet-4-6-full
+  - name: claude-sonnet-4-6_full
     model: claude-sonnet-4-6
     backend: anthropic       # "genai" | "anthropic" | "ollama" | "uva"
     temperature: 0.0

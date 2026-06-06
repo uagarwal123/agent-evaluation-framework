@@ -43,7 +43,7 @@ Three notebooks cover dataset exploration:
 | Notebook | What it covers |
 |---|---|
 | `data_understanding/general_eda/eda.ipynb` | Traces per framework, FM prevalence and co-occurrence, token and step-length distributions |
-| `data_understanding/fm_1_3_analysis/fm13_token_length_analysis.ipynb` | FM-1.3 (Step Repetition) deep-dive: does token length predict this failure mode? |
+| `data_understanding/fm_1_3_analysis/fm13_detection_analysis.ipynb` | FM-1.3 (Step Repetition) deep-dive: does token length predict this failure mode? |
 | `data_understanding.ipynb` | Unifies all 7 parser outputs into a shared schema; lets you inspect and export traces for any failure mode to a readable markdown file |
 
 The first two notebooks read directly from `data/MAST-Data/MAD_full_dataset.json`. The third requires the parser output JSON files (see below).
